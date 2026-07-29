@@ -294,6 +294,30 @@ def run_micro_planner(
     )
 
 
+def attach_task_context(plan, task_name, all_subtasks, all_classes):
+    """Wraps the plan with the bigger-picture context it belongs to: the
+    overall feature/task name, every subtask under that task, and every
+    class involved in the feature (not just the one this run processed).
+
+    This is metadata WE already know from the high-level planner — the
+    micro-planner/model never generates or guesses this, it's just recorded
+    so this one file still shows where it fits in the larger feature once
+    you have many of these files sitting around.
+
+    Note: this does NOT change what gets processed. The micro-planner still
+    only breaks down ONE class per run — all_subtasks/all_classes are just
+    a record of what else exists alongside it, for traceability later
+    (e.g. when the graph layer is built).
+    """
+    task_context = {
+        "big_task_name": task_name,
+        "all_subtasks": all_subtasks,
+        "all_classes": all_classes,
+    }
+    # Put task_context first so it reads naturally at the top of the file.
+    return {"task_context": task_context, **plan}
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Micro-planner: break one class into atomic elements."
@@ -304,6 +328,23 @@ def main():
     parser.add_argument(
         "--source-file", default=None,
         help="Path to existing source file containing the class, if any.",
+    )
+    parser.add_argument(
+        "--task-name", default=None,
+        help="Name of the overall feature/task this class belongs to. "
+             "Defaults to --big-goal if not given.",
+    )
+    parser.add_argument(
+        "--all-subtasks", default=None,
+        help="Comma-separated list of ALL subtasks under this big task "
+             "(not just this class's subtask). Defaults to just this "
+             "run's --subtask if not given.",
+    )
+    parser.add_argument(
+        "--all-classes", default=None,
+        help="Comma-separated list of ALL classes/components involved in "
+             "this feature (not just this run's --class-name). Defaults "
+             "to just this run's --class-name if not given.",
     )
     parser.add_argument("--backend", default="ollama", choices=["ollama"])
     parser.add_argument("--ollama-model", default=DEFAULT_MODEL)
@@ -329,6 +370,17 @@ def main():
         host=args.ollama_host,
         max_retries=args.max_retries,
     )
+
+    task_name = args.task_name or args.big_goal
+    all_subtasks = (
+        [s.strip() for s in args.all_subtasks.split(",")]
+        if args.all_subtasks else [args.subtask_description]
+    )
+    all_classes = (
+        [c.strip() for c in args.all_classes.split(",")]
+        if args.all_classes else [args.class_name]
+    )
+    plan = attach_task_context(plan, task_name, all_subtasks, all_classes)
 
     output = json.dumps(plan, indent=2)
     if args.out:
