@@ -99,21 +99,6 @@ python dag_code_generator.py
 
 # 2. Run generated standalone script
 python xyz.py
-
-# Python Usage Example:
-from dag_integrator import DAGIntegrator
-from dag_code_generator import DAGCodeGenerator
-from example_nodes import get_example_dag
-
-classes, dag = get_example_dag()
-
-# 1. Execute in-memory
-integrator = DAGIntegrator(classes, dag)
-outputs, execution_order = integrator.execute()
-
-# 2. Transpile into standalone script xyz.py
-generator = DAGCodeGenerator(classes, dag)
-generator.generate("xyz.py", run_first=True)
 ---
 
 ## 3. Microservice API Specifications
