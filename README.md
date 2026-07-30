@@ -69,37 +69,51 @@ graph TD
 - **[critic/critic.py](file:///d:/autocode/agentSwarm/critic/critic.py)**: Standalone code reviewer that accepts source code, command strings, task specs, and execution error logs, returning structured JSON critiques (`pass`, `needs_fixes`, `fail`) with severity ratings (`critical`, `major`, `minor`, `nit`).
 - **[memory.py](file:///d:/autocode/agentSwarm/memory.py)**: Persistent SQLite database (`memory.db`) storing **confirmed working fixes**. Uses Jaccard keyword stem matching for deduplication on write and past-fix retrieval before coding rounds.
 
-### 2.5 Runtime DAG Execution
-- **[dag_integrator.py](dag_integrator.py)**: A standalone runtime execution engine for wiring built agent classes together via a dependency graph and running them in topological order. Whereas `class_dag.py` and `class_coordinator.py` govern *build-time* ordering of code generation, `DAGIntegrator` operates at *runtime* — it takes already-implemented agent classes and a user-supplied dependency map and actually executes them end-to-end.
+### 2.5 Standalone Runtime DAG Execution & Code Generation
 
-  **Key behaviours:**
-  - **Lazy instantiation**: Accepts either class types (preferred) or pre-built instances. Passing class types ensures constructors with side effects (e.g. opening DB connections) don't run until all dependencies have finished.
-  - **Kahn's BFS execution**: Resolves execution order at runtime via an in-degree queue, collecting each node's `.run()` return value and forwarding it as positional arguments to dependent nodes.
-  - **Early validation**: `_validate()` catches missing node registrations and unknown dependency references before execution starts, preventing silent runtime failures.
-  - **Cycle detection**: After BFS completes, confirms all nodes were visited; any remainder raises `ValueError` indicating a cycle or unreachable node.
+This suite provides a standalone, framework-free runtime engine and script generator for executing modular node classes in topological order and bundling them into single-file executable scripts.
 
-  **Usage:**
-  ```python
-  from dag_integrator import DAGIntegrator
+- **[dag_integrator.py](dag_integrator.py)**: The in-memory runtime execution engine (`DAGIntegrator`).
+  - **Lazy Instantiation**: Accepts class types (preferred) or pre-built instances. Class types are instantiated lazily right before `.run()` executes, ensuring constructors with side effects (DB connections, network calls) don't trigger until prerequisite node outputs are ready.
+  - **Topological Resolution**: Uses Kahn's BFS algorithm to process nodes in dependency order, capturing each node's return output and passing it as positional arguments to downstream `.run(*args)` calls.
+  - **Validation & Cycle Guard**: Validates node keys and dependency entries before execution (`_validate()`) and raises `ValueError` if cycles or unreachable nodes exist.
 
-  integrator = DAGIntegrator(
-      classes={
-          "ConfigLoader": ConfigLoader,
-          "DatabaseConnector": DatabaseConnector,
-          "Reporter": Reporter,
-      },
-      dag={
-          "ConfigLoader": [],
-          "DatabaseConnector": ["ConfigLoader"],
-          "Reporter": ["DatabaseConnector"],
-      }
-  )
+- **[dag_code_generator.py](dag_code_generator.py)**: The standalone code transpiler (`DAGCodeGenerator`).
+  - **Source Extraction**: Uses Python's `inspect.getsource()` to extract class definitions directly from live objects/classes.
+  - **Single-File Transpilation**: Generates a self-contained, executable Python script (`xyz.py`) containing all node class definitions, a topologically-sorted `main()` execution sequence, exception handling, and standard `if __name__ == "__main__":` entry point.
+  - **Validation Option**: Supports `run_first=True` to execute the DAG via `DAGIntegrator` for runtime verification before emitting the final script.
 
-  outputs, order = integrator.execute()
-  # outputs["Reporter"] holds the final result
+- **[example_nodes.py](example_nodes.py)**: Sample node implementation pipeline for testing and verification.
+  - Features 5 sequential demo nodes (`ConfigLoader` ➔ `DatabaseConnector` ➔ `DataFetcher` ➔ `DataProcessor` ➔ `ReportGenerator`).
+  - Includes helper `get_example_dag()` to quickly initialize classes and DAG mappings for testing.
 
+---
 
-### Relationship to the rest of the system: DAGIntegrator is the natural runtime counterpart to the planning and class-building pipeline. Once class_coordinator.py has generated and assembled all class files, DAGIntegrator can wire their instances together and drive a full end-to-end execution run without any further orchestration code.
+#### Usage & Testing
+
+To test DAG code generation and execute the resulting standalone script:
+
+```bash
+# 1. Generate standalone script xyz.py from node classes and DAG map
+python dag_code_generator.py
+
+# 2. Run generated standalone script
+python xyz.py
+
+# Python Usage Example:
+from dag_integrator import DAGIntegrator
+from dag_code_generator import DAGCodeGenerator
+from example_nodes import get_example_dag
+
+classes, dag = get_example_dag()
+
+# 1. Execute in-memory
+integrator = DAGIntegrator(classes, dag)
+outputs, execution_order = integrator.execute()
+
+# 2. Transpile into standalone script xyz.py
+generator = DAGCodeGenerator(classes, dag)
+generator.generate("xyz.py", run_first=True)
 ---
 
 ## 3. Microservice API Specifications
