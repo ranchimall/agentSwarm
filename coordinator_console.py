@@ -22,6 +22,8 @@ Requires the Coder Service to already be running (see coder_service.py
 which starts both).
 """
 
+import json
+import re
 import sys
 import uuid
 import requests
@@ -31,6 +33,76 @@ import coordinator
 
 CODER_SERVICE_URL = "http://localhost:8001"
 PLAN_CONTROLLER_URL = "http://localhost:8002"
+
+
+# ----------------------------------------------------------------------
+# Direct-to-Ollama path -- bypasses coordinator.decide() AND
+# coder_service.py entirely. One prompt straight to the local model,
+# same as pasting into the deepseek-coder chat by hand. No routing,
+# no candidate generation, no pytest scoring.
+# ----------------------------------------------------------------------
+def _extract_code(text: str) -> str:
+    match = re.search(r"```python\s*(.*?)```", text, re.DOTALL)
+    if match:
+        return match.group(1).strip()
+    match = re.search(r"```\s*(.*?)```", text, re.DOTALL)
+    if match:
+        return match.group(1).strip()
+    return text.strip()
+
+
+def dispatch_raw_to_ollama(prompt: str, ollama_model: str, ollama_url: str) -> str:
+    """Send prompt text straight to Ollama's /api/generate. No coordinator
+    routing, no coder_service, no tests -- just the raw response."""
+    resp = requests.post(
+        f"{ollama_url}/api/generate",
+        json={"model": ollama_model, "prompt": prompt, "stream": False},
+        timeout=None,
+    )
+    resp.raise_for_status()
+    return resp.json()["response"]
+
+
+def read_multiline(prompt_label: str = "") -> str:
+    """Collect several lines of pasted text until a lone 'END' line.
+    Ctrl+Z/Ctrl+D during this just ends the paste, it does NOT exit
+    the console (unlike the single-line task> prompt)."""
+    if prompt_label:
+        print(prompt_label)
+    print("(paste your text; finish with a line containing only END)")
+    lines = []
+    while True:
+        try:
+            line = input()
+        except EOFError:
+            break
+        if line.strip() == "END":
+            break
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def build_file_prompt(plan_path: str, skeleton_path: str, extra_instruction: str = "") -> str:
+    with open(plan_path, "r", encoding="utf-8") as f:
+        plan = json.load(f)
+    with open(skeleton_path, "r", encoding="utf-8") as f:
+        skeleton_code = f.read()
+
+    instruction_line = f"\nAdditional instruction from the user: {extra_instruction}\n" if extra_instruction else ""
+
+    return f"""You are given a Python class skeleton and a plan describing what it should do.
+Fill in ALL the TODOs (constructor member initialization and method bodies) so the class is fully working.
+Keep the class name, method signatures, and docstrings as they are.
+Return ONLY the complete Python code for the class, inside a single ```python code block, with no other text.
+{instruction_line}
+=== plan.json ===
+{json.dumps(plan, indent=2)}
+
+=== skeleton code ===
+```python
+{skeleton_code}
+```
+"""
 
 
 def _check_service_up(url: str) -> bool:
@@ -104,7 +176,11 @@ def run_console(backend: str, ollama_model: str, ollama_url: str,
         model=backend, ollama_model=ollama_model, ollama_url=ollama_url,
     )
 
-    print("\nType a task, or 'exit'/'quit' to stop.\n")
+    print("\nType a task, or 'exit'/'quit' to stop.")
+    print("Special commands:")
+    print("  file <plan.json> <skeleton.py>   - read both files, send directly to Ollama, no routing/tests")
+    print("  paste                            - enter multi-line text, ends with a lone 'END' line, sent directly to Ollama")
+    print()
 
     while True:
         try:
@@ -118,6 +194,59 @@ def run_console(backend: str, ollama_model: str, ollama_url: str,
         if task.lower() in ("exit", "quit"):
             print("Exiting.")
             break
+
+        if task.lower().startswith("file "):
+            parts = task.split()
+            if len(parts) < 3:
+                print("Usage: file <plan.json> <skeleton.py> [optional extra instruction]\n")
+                continue
+            _, plan_path, skeleton_path = parts[0], parts[1], parts[2]
+            extra_instruction = " ".join(parts[3:])
+            try:
+                prompt = build_file_prompt(plan_path, skeleton_path, extra_instruction)
+            except (OSError, json.JSONDecodeError) as e:
+                print(f"Could not read files: {e}\n")
+                continue
+
+            print(f"\n[coordinator] sending {plan_path} + {skeleton_path} "
+                  f"directly to '{ollama_model}' at {ollama_url} (no routing, no tests) ...\n")
+            try:
+                raw = dispatch_raw_to_ollama(prompt, ollama_model, ollama_url)
+            except requests.exceptions.ConnectionError:
+                print(f"Could not reach Ollama at {ollama_url}. Is 'ollama serve' running?\n")
+                continue
+            except requests.exceptions.HTTPError as e:
+                print(f"Ollama returned an error: {e}\n")
+                continue
+
+            code = _extract_code(raw)
+            print("=== Generated code ===\n")
+            print(code)
+            print()
+            continue
+
+        if task.lower() == "paste":
+            pasted = read_multiline()
+            if not pasted.strip():
+                print("(nothing pasted)\n")
+                continue
+
+            print(f"\n[coordinator] sending pasted text directly to '{ollama_model}' "
+                  f"at {ollama_url} (no routing, no tests) ...\n")
+            try:
+                raw = dispatch_raw_to_ollama(pasted, ollama_model, ollama_url)
+            except requests.exceptions.ConnectionError:
+                print(f"Could not reach Ollama at {ollama_url}. Is 'ollama serve' running?\n")
+                continue
+            except requests.exceptions.HTTPError as e:
+                print(f"Ollama returned an error: {e}\n")
+                continue
+
+            code = _extract_code(raw)
+            print("=== Generated code ===\n")
+            print(code)
+            print()
+            continue
 
         try:
             decision = coordinator.decide(task, coord_cfg)

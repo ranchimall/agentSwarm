@@ -1,0 +1,78 @@
+{
+  "task_context": {
+    "big_task_name": "Prevent API abuse",
+    "all_subtasks": [
+      "Create a RateLimiter class with a check-and-record method"
+    ],
+    "all_classes": [
+      "RateLimiter"
+    ]
+  },
+  "class_name": "RateLimiter",
+  "class_id": "cls_rate_limiter",
+  "generated_from": {
+    "big_goal": "Prevent API abuse",
+    "subtask_description": "Create a RateLimiter class with a check-and-record method"
+  },
+  "members": [
+    {
+      "id": "mem_0001",
+      "name": "threshold",
+      "kind": "member",
+      "type": "int",
+      "description": "The maximum number of requests allowed within a time window.",
+      "side_effects": [
+        "none"
+      ]
+    },
+    {
+      "id": "mem_0002",
+      "name": "window_ms",
+      "kind": "member",
+      "type": "int",
+      "description": "The time window in milliseconds during which the requests are monitored.",
+      "side_effects": [
+        "none"
+      ]
+    },
+    {
+      "id": "mem_0003",
+      "name": "request_log",
+      "kind": "member",
+      "type": "list",
+      "description": "A log of timestamps for each request.",
+      "side_effects": [
+        "state mutation"
+      ]
+    }
+  ],
+  "methods": [
+    {
+      "id": "meth_0001",
+      "name": "check_and_record",
+      "kind": "method",
+      "status": "new",
+      "inputs": [
+        {
+          "name": "timestamp",
+          "type": "int",
+          "required": true
+        }
+      ],
+      "outputs": [],
+      "returns": {
+        "type": "bool",
+        "description": "True if the request is allowed, False otherwise."
+      },
+      "side_effects": [
+        "state mutation"
+      ],
+      "depends_on": [
+        "mem_0001",
+        "mem_0002",
+        "mem_0003"
+      ],
+      "notes": "This method checks if the current number of requests within the window has exceeded the threshold and records the request timestamp."
+    }
+  ]
+}
