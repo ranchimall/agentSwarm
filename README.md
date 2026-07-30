@@ -97,6 +97,9 @@ graph TD
 
   outputs, order = integrator.execute()
   # outputs["Reporter"] holds the final result
+
+
+Relationship to the rest of the system: DAGIntegrator is the natural runtime counterpart to the planning and class-building pipeline. Once class_coordinator.py has generated and assembled all class files, DAGIntegrator can wire their instances together and drive a full end-to-end execution run without any further orchestration code.
 ---
 
 ## 3. Microservice API Specifications
