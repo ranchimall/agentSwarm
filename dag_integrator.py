@@ -6,7 +6,7 @@ from typing import Dict, List, Any, Tuple
 
 
 class DAGIntegrator:
-    def init(self, classes: Dict[str, Any], dag: Dict[str, List[str]]):
+    def __init__(self, classes: Dict[str, Any], dag: Dict[str, List[str]]):
         self.classes = classes
         self.dag = dag
         self.outputs = {}

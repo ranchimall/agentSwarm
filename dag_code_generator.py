@@ -11,7 +11,7 @@ class DAGCodeGenerator:
     Generates a standalone, executable Python script (xyz.py) from the DAG.
     """
 
-    def init(self, classes: Dict[str, Any], dag: Dict[str, List[str]]):
+    def __init__(self, classes: Dict[str, Any], dag: Dict[str, List[str]]):
         self.classes = classes
         self.dag = dag
 
@@ -41,6 +41,8 @@ class DAGCodeGenerator:
 
         for node, deps in self.dag.items():
             for dep in deps:
+                if dep not in self.dag:
+                    raise KeyError(f"Node '{node}' depends on unknown node '{dep}'")
                 graph[dep].append(node)
                 indegree[node] += 1
 
@@ -73,7 +75,7 @@ import sys
         seen = set()
 
         for name, entry in self.classes.items():
-            cls = entry if inspect.isclass(entry) else entry.class
+            cls = entry if inspect.isclass(entry) else entry.__class__
             try:
                 source = textwrap.dedent(inspect.getsource(cls))
                 if source not in seen:
@@ -82,8 +84,8 @@ import sys
             except Exception:
                 lines.append(f"# Could not extract source for {name}\n")
 
-            if cls.name != name:
-                lines.append(f"{name} = {cls.name}\n\n")
+            if cls.__name__ != name:
+                lines.append(f"{name} = {cls.__name__}\n\n")
 
         return "\n".join(lines)
 
@@ -108,20 +110,20 @@ import sys
 
     def _generate_entry_point(self) -> str:
         return '''
-if name == "main":
+if __name__ == "__main__":
     try:
         results = main()
         print("\\nOutputs:")
         for k, v in results.items():
-            print(f"  {k}: {type(v).name}")
+            print(f"  {k}: {type(v).__name__}")
     except Exception as e:
         print(f"❌ Failed: {e}", file=sys.stderr)
         sys.exit(1)
 '''
 
 ### Usage (runs when you execute this file)
-### if name == "main":
-    ### from example_nodes import get_example_dag
-    ### classes, dag = get_example_dag()
-    ### generator = DAGCodeGenerator(classes, dag)
-    ### generator.generate("xyz.py", run_first=True)
+if __name__ == "__main__":
+    from example_nodes import get_example_dag
+    classes, dag = get_example_dag()
+    generator = DAGCodeGenerator(classes, dag)
+    generator.generate("xyz.py", run_first=True)
