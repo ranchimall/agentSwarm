@@ -69,6 +69,34 @@ graph TD
 - **[critic/critic.py](file:///d:/autocode/agentSwarm/critic/critic.py)**: Standalone code reviewer that accepts source code, command strings, task specs, and execution error logs, returning structured JSON critiques (`pass`, `needs_fixes`, `fail`) with severity ratings (`critical`, `major`, `minor`, `nit`).
 - **[memory.py](file:///d:/autocode/agentSwarm/memory.py)**: Persistent SQLite database (`memory.db`) storing **confirmed working fixes**. Uses Jaccard keyword stem matching for deduplication on write and past-fix retrieval before coding rounds.
 
+### 2.5 Runtime DAG Execution
+- **[dag_integrator.py](dag_integrator.py)**: A standalone runtime execution engine for wiring built agent classes together via a dependency graph and running them in topological order. Whereas `class_dag.py` and `class_coordinator.py` govern *build-time* ordering of code generation, `DAGIntegrator` operates at *runtime* — it takes already-implemented agent classes and a user-supplied dependency map and actually executes them end-to-end.
+
+  **Key behaviours:**
+  - **Lazy instantiation**: Accepts either class types (preferred) or pre-built instances. Passing class types ensures constructors with side effects (e.g. opening DB connections) don't run until all dependencies have finished.
+  - **Kahn's BFS execution**: Resolves execution order at runtime via an in-degree queue, collecting each node's `.run()` return value and forwarding it as positional arguments to dependent nodes.
+  - **Early validation**: `_validate()` catches missing node registrations and unknown dependency references before execution starts, preventing silent runtime failures.
+  - **Cycle detection**: After BFS completes, confirms all nodes were visited; any remainder raises `ValueError` indicating a cycle or unreachable node.
+
+  **Usage:**
+  ```python
+  from dag_integrator import DAGIntegrator
+
+  integrator = DAGIntegrator(
+      classes={
+          "ConfigLoader": ConfigLoader,
+          "DatabaseConnector": DatabaseConnector,
+          "Reporter": Reporter,
+      },
+      dag={
+          "ConfigLoader": [],
+          "DatabaseConnector": ["ConfigLoader"],
+          "Reporter": ["DatabaseConnector"],
+      }
+  )
+
+  outputs, order = integrator.execute()
+  # outputs["Reporter"] holds the final result
 ---
 
 ## 3. Microservice API Specifications
