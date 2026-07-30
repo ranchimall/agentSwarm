@@ -89,18 +89,6 @@ This suite provides a standalone, framework-free runtime engine and script gener
 
 ---
 
-#### Usage & Testing
-
-To test DAG code generation and execute the resulting standalone script:
-
-```bash
-# 1. Generate standalone script xyz.py from node classes and DAG map
-python dag_code_generator.py
-
-# 2. Run generated standalone script
-python xyz.py
----
-
 ## 3. Microservice API Specifications
 
 ### Coder Service (`http://localhost:8001`)
